@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Muhammad Awais — WebGL Particle Animation Proposal</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --amber: #F5A623;
+    --amber-dim: #C47D0E;
+    --amber-glow: rgba(245,166,35,0.18);
+    --amber-glow-strong: rgba(245,166,35,0.35);
+    --bg: #080808;
+    --bg2: #0E0E0E;
+    --bg3: #141414;
+    --border: rgba(245,166,35,0.22);
+    --text: #E8E8E8;
+    --text-dim: #888;
+    --white: #ffffff;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 48px;
+    background: rgba(8,8,8,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--amber); }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    height: 100vh;
+    min-height: 640px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #particleCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 0 24px;
+    max-width: 820px;
+  }
+
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.2s forwards;
+  }
+
+  .hero-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(32px, 6vw, 72px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    color: var(--white);
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.4s forwards;
+  }
+
+  .hero-title span { color: var(--amber); }
+
+  .hero-sub {
+    font-size: 16px;
+    font-weight: 300;
+    color: var(--text-dim);
+    max-width: 520px;
+    margin: 0 auto 40px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.6s forwards;
+  }
+
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 32px;
+    background: var(--amber);
+    color: #000;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.8s forwards;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+
+  .hero-cta:hover {
+    background: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 0 32px var(--amber-glow-strong);
+  }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    animation: pulse 2s infinite;
+  }
+
+  .scroll-line {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--amber), transparent);
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    padding: 100px 48px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.35em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    max-width: 60px;
+    height: 1px;
+    background: var(--amber);
+    opacity: 0.4;
+  }
+
+  .section-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(24px, 4vw, 42px);
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 48px;
+    line-height: 1.15;
+  }
+
+  /* ── PROPOSAL TEXT ── */
+  .proposal-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    padding: 40px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .proposal-block::before {
+    content: '"';
+    position: absolute;
+    top: -20px;
+    left: 32px;
+    font-size: 140px;
+    font-family: 'Orbitron', monospace;
+    color: var(--amber);
+    opacity: 0.06;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .proposal-intro {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+
+  .proposal-text p {
+    font-size: 16px;
+    line-height: 1.85;
+    color: var(--text);
+    margin-bottom: 20px;
+  }
+
+  .proposal-text p:last-child { margin-bottom: 0; }
+
+  .proposal-text strong {
+    color: var(--amber);
+    font-weight: 600;
+  }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    margin: 64px 0;
+  }
+
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 36px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    transform: scaleX(0);
+    transition: transform 0.4s;
+  }
+
+  .stat-card:hover { border-color: var(--amber); transform: translateY(-4px); }
+  .stat-card:hover::after { transform: scaleX(1); }
+
+  .stat-num {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(36px, 5vw, 52px);
+    font-weight: 900;
+    color: var(--amber);
+    line-height: 1;
+    margin-bottom: 10px;
+  }
+
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  /* ── APPROACH ── */
+  .approach-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2px;
+  }
+
+  .approach-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 36px 32px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .approach-card:hover { border-color: rgba(245,166,35,0.5); }
+
+  .approach-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: var(--amber);
+    letter-spacing: 0.2em;
+    margin-bottom: 20px;
+    opacity: 0.7;
+  }
+
+  .approach-card h3 {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 14px;
+    letter-spacing: 0.05em;
+  }
+
+  .approach-card p {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  .approach-icon {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    font-size: 32px;
+    opacity: 0.08;
+  }
+
+  /* ── TECH STACK ── */
+  .tech-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 64px 0;
+  }
+
+  .tech-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .tech-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 20px;
+    border: 1px solid var(--border);
+    color: var(--amber);
+    letter-spacing: 0.12em;
+    background: rgba(245,166,35,0.04);
+    transition: all 0.2s;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+
+  .tech-pill:hover {
+    background: rgba(245,166,35,0.12);
+    border-color: var(--amber);
+  }
+
+  /* ── TIMELINE ── */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--amber), transparent);
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 48px;
+  }
+
+  .timeline-item:last-child { margin-bottom: 0; }
+
+  .timeline-dot {
+    position: absolute;
+    left: -38px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 12px var(--amber);
+  }
+
+  .timeline-phase {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .timeline-item h3 {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+
+  .timeline-item p {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* ── FREE OFFER BANNER ── */
+  .offer-banner {
+    background: linear-gradient(135deg, rgba(245,166,35,0.08), rgba(245,166,35,0.03));
+    border: 1px solid var(--amber);
+    padding: 48px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin: 80px 0;
+  }
+
+  .offer-banner::before {
+    content: '';
+    position: absolute;
+    top: -2px; left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 3px;
+    background: var(--amber);
+    box-shadow: 0 0 20px var(--amber);
+  }
+
+  .offer-tag {
+    display: inline-block;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: #000;
+    background: var(--amber);
+    padding: 6px 16px;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+  }
+
+  .offer-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(22px, 4vw, 36px);
+    font-weight: 900;
+    color: var(--white);
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+
+  .offer-sub {
+    font-size: 15px;
+    color: var(--text-dim);
+    max-width: 480px;
+    margin: 0 auto 32px;
+  }
+
+  .offer-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 40px;
+    background: var(--amber);
+    color: #000;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: all 0.2s;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+
+  .offer-cta:hover {
+    background: #fff;
+    box-shadow: 0 0 40px var(--amber-glow-strong);
+  }
+
+  /* ── QUESTION BLOCK ── */
+  .question-block {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    padding: 32px 40px;
+    margin: 48px 0;
+  }
+
+  .question-block .q-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .question-block p {
+    font-size: 16px;
+    color: var(--text);
+    font-style: italic;
+    line-height: 1.75;
+  }
+
+  /* ── PORTFOLIO GAMES ── */
+  .games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 2px;
+  }
+
+  .game-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 28px 24px;
+    transition: all 0.3s;
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+  }
+
+  .game-card:hover {
+    border-color: var(--amber);
+    background: rgba(245,166,35,0.05);
+    transform: translateY(-3px);
+  }
+
+  .game-icon {
+    font-size: 28px;
+    margin-bottom: 14px;
+  }
+
+  .game-card h4 {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  .game-card p {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .game-platform {
+    display: inline-block;
+    margin-top: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--amber);
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px;
+    text-align: center;
+  }
+
+  .footer-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+
+  .footer-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .footer-link {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    padding: 10px 24px;
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+    margin: 6px;
+  }
+
+  .footer-link:hover { color: var(--amber); border-color: var(--amber); }
+
+  .footer-copy {
+    margin-top: 32px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.15);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── GLOW DIVIDER ── */
+  .glow-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    opacity: 0.3;
+    margin: 0 48px;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    nav { padding: 16px 24px; }
+    .nav-links { display: none; }
+    section { padding: 72px 24px; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .proposal-block { padding: 28px 24px; }
+    .offer-banner { padding: 36px 24px; }
+    .question-block { padding: 24px 20px; }
+    footer { padding: 40px 24px; }
+    .glow-divider { margin: 0 24px; }
+  }
+
+  @media (max-width: 480px) {
+    .stats-row { grid-template-columns: 1fr; }
+  }
+
+  /* ── CORNER DECORATIONS ── */
+  .corner-box {
+    position: relative;
+  }
+  .corner-box::before, .corner-box::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--amber);
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .corner-box::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .corner-box::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Awais · WebGL Dev</div>
+  <ul class="nav-links">
+    <li><a href="#proposal">Proposal</a></li>
+    <li><a href="#approach">Approach</a></li>
+    <li><a href="#timeline">Timeline</a></li>
+    <li><a href="#portfolio">Portfolio</a></li>
+    <li><a href="#cta">Get Demo</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <canvas id="particleCanvas"></canvas>
+  <div class="hero-content">
+    <div class="hero-eyebrow">WebGL Proposal · Tiger Morph Animation</div>
+    <h1 class="hero-title">Particles that<br/><span>tell your story</span></h1>
+    <p class="hero-sub">A custom particle system that morphs into your tiger logo — cinematic, 60 FPS, seamlessly looping.</p>
+    <a href="#cta" class="hero-cta">↓ Claim Free Demo</a>
+  </div>
+  <div class="hero-scroll">
+    <div class="scroll-line"></div>
+    scroll
+  </div>
+</div>
+
+<!-- PROPOSAL -->
+<section id="proposal">
+  <div class="section-label">The Proposal</div>
+  <h2 class="section-title reveal">A message<br/>for Eryk</h2>
+
+  <div class="proposal-block corner-box reveal">
+    <div class="proposal-intro">Before you hire anyone —</div>
+    <div class="proposal-text">
+      <p>Let me build you a <strong>free particle demo</strong> so you judge the quality firsthand, zero commitment.</p>
+      <p>That STATWORX hero section caught my eye the moment I opened it — clean particle fields, nothing cluttered, just motion that feels intentional. That's the standard I hold my own work to.</p>
+      <p>Over <strong>7 years and 20+ shipped Unity titles</strong> — highway riders, car stunts, combat simulators — I've written custom particle systems, tuned GLSL shaders, and pushed WebGL exports to a steady <strong>60 FPS even on budget mobile hardware</strong>. That's the same performance bar you've set here.</p>
+      <p><strong>For your project:</strong> sample the tiger logo into a point cloud, drive the morph via vertex displacement in a custom GLSL shader, loop it with smooth easing. Three.js, clean and integration-ready.</p>
+      <p><strong>One question before we scope:</strong> Is your homepage React-based or plain HTML — so I confirm whether React Three Fiber fits or vanilla Three.js is cleaner for your stack?</p>
+      <p>Reply today and I'll have your demo ready within 48 hours.</p>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="glow-divider"></div>
+<section style="padding-top: 64px; padding-bottom: 64px;">
+  <div class="stats-row reveal">
+    <div class="stat-card">
+      <div class="stat-num">7+</div>
+      <div class="stat-label">Years WebGL Experience</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">20+</div>
+      <div class="stat-label">Shipped Titles</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">60</div>
+      <div class="stat-label">FPS Target — Guaranteed</div>
+    </div>
+  </div>
+</section>
+<div class="glow-divider"></div>
+
+<!-- APPROACH -->
+<section id="approach">
+  <div class="section-label">Technical Approach</div>
+  <h2 class="section-title reveal">How I build<br/>your tiger morph</h2>
+
+  <div class="approach-grid reveal">
+    <div class="approach-card">
+      <div class="approach-num">Phase 01</div>
+      <h3>Point Cloud Sampling</h3>
+      <p>Your tiger logo is sampled into thousands of particle positions using a custom algorithm — the foundation of the morph target.</p>
+      <div class="approach-icon">🐯</div>
+    </div>
+    <div class="approach-card">
+      <div class="approach-num">Phase 02</div>
+      <h3>GLSL Vertex Shader</h3>
+      <p>Particles float in an ambient field. On morph trigger, vertex displacement moves each point to its tiger target with eased interpolation.</p>
+      <div class="approach-icon">✦</div>
+    </div>
+    <div class="approach-card">
+      <div class="approach-num">Phase 03</div>
+      <h3>Cinematic Loop</h3>
+      <p>Field → Tiger hold → dissolve back. Amber glow, no mesh, no lines. Seamless and frame-perfect at 60 FPS on mobile and desktop.</p>
+      <div class="approach-icon">⟳</div>
+    </div>
+    <div class="approach-card">
+      <div class="approach-num">Phase 04</div>
+      <h3>Production Delivery</h3>
+      <p>Clean, commented code. Drop-in integration for React or plain HTML. Responsive breakpoints. Performance-optimized and ready to ship.</p>
+      <div class="approach-icon">🚀</div>
+    </div>
+  </div>
+
+  <hr class="tech-divider"/>
+
+  <div class="section-label">Tech Stack</div>
+  <div class="tech-grid reveal">
+    <div class="tech-pill">Three.js</div>
+    <div class="tech-pill">GLSL Shaders</div>
+    <div class="tech-pill">WebGL</div>
+    <div class="tech-pill">React Three Fiber</div>
+    <div class="tech-pill">Custom Particle System</div>
+    <div class="tech-pill">Vertex Displacement</div>
+    <div class="tech-pill">Point Cloud Sampling</div>
+    <div class="tech-pill">60 FPS Optimization</div>
+    <div class="tech-pill">Mobile Responsive</div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<div class="glow-divider"></div>
+<section id="timeline">
+  <div class="section-label">Delivery Timeline</div>
+  <h2 class="section-title reveal">From brief<br/>to live in days</h2>
+
+  <div class="timeline reveal">
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-phase">Day 0 — Today</div>
+      <h3>Free Particle Demo</h3>
+      <p>You reply, I start. Within 48 hours you receive a live ambient particle field in your color palette — no tiger yet, just pure quality proof.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-phase">Day 3–5</div>
+      <h3>Tiger Point Cloud + Morph Draft</h3>
+      <p>Your tiger logo is processed into a point cloud. First morph animation sent for review — timing, easing, hold duration all adjustable.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-phase">Day 7–10</div>
+      <h3>Polish + Refinement</h3>
+      <p>Cinematic loop fine-tuned. Amber glow, particle density, transition feel — iterated until it matches the premium standard of the STATWORX reference.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-phase">Day 12–14</div>
+      <h3>Final Delivery</h3>
+      <p>Production-ready code, integrated into your homepage. Performance QA on desktop and mobile. Clean handoff with documentation.</p>
+    </div>
+  </div>
+</section>
+<div class="glow-divider"></div>
+
+<!-- FREE OFFER -->
+<section id="cta" style="padding-top: 80px; padding-bottom: 40px;">
+  <div class="offer-banner corner-box reveal">
+    <div class="offer-tag">Limited Offer</div>
+    <h2 class="offer-title">Free particle demo.<br/>No strings attached.</h2>
+    <p class="offer-sub">Reply today and within 48 hours you'll have a live amber particle field to judge the quality before any commitment.</p>
+    <a href="https://www.upwork.com/freelancers/~01b9267db3749d2001" target="_blank" class="offer-cta">
+      ↗ Hire Awais on Upwork
+    </a>
+  </div>
+
+  <div class="question-block reveal">
+    <div class="q-label">Discovery Question</div>
+    <p>"Is your homepage React-based or plain HTML — so I can confirm whether React Three Fiber fits, or if a vanilla Three.js build is the cleaner integration for your stack?"</p>
+  </div>
+</section>
+
+<!-- PORTFOLIO -->
+<section id="portfolio">
+  <div class="section-label">Live Portfolio</div>
+  <h2 class="section-title reveal">20+ shipped titles —<br/>all on the Play Store</h2>
+
+  <div class="games-grid reveal">
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.car.parking.jam.offline.games.traffic.puzzle&hl=en" target="_blank">
+      <div class="game-icon">🚗</div>
+      <h4>Car Parking Jam</h4>
+      <p>Traffic puzzle with custom physics, particle effects, and smooth 60 FPS rendering on mobile WebGL.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.car.stunt.driving.cargames.offline.ramp.racing&hl=en" target="_blank">
+      <div class="game-icon">🏎️</div>
+      <h4>Car Stunt Racing</h4>
+      <p>Ramp racing simulator — GPU-heavy visual effects optimized for budget hardware with custom shader logic.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.carefort.doctor.sim.games.free&hl=en" target="_blank">
+      <div class="game-icon">🏥</div>
+      <h4>Doctor Simulator</h4>
+      <p>High-fidelity 3D simulation game. Complex scene management and real-time render optimization.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.lf.frontline.elite.war.free.apps" target="_blank">
+      <div class="game-icon">🎖️</div>
+      <h4>Frontline Elite War</h4>
+      <p>Combat shooter with particle-heavy explosion FX, GLSL shader post-processing, and multiplayer networking.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.free.moto.highway.rider.offlinegames.stunt.bike.racing.extreme.simulator" target="_blank">
+      <div class="game-icon">🏍️</div>
+      <h4>Highway Rider</h4>
+      <p>Extreme bike racing simulator. Custom particle trail system maintaining 60 FPS at high speeds.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+    <a class="game-card" href="https://play.google.com/store/apps/details?id=com.realsniper.hitman.contract.killer3d.fun.games&hl=en" target="_blank">
+      <div class="game-icon">🎯</div>
+      <h4>Real Sniper Hitman</h4>
+      <p>3D contract killer game with cinematic camera systems and real-time environmental particle effects.</p>
+      <span class="game-platform">↗ Play Store</span>
+    </a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div class="glow-divider"></div>
+<footer>
+  <div class="footer-name">Muhammad Awais</div>
+  <div class="footer-title">Unity · WebGL · Particle Systems · GLSL</div>
+  <div>
+    <a class="footer-link" href="https://www.upwork.com/freelancers/~01b9267db3749d2001" target="_blank">↗ Upwork Profile</a>
+    <a class="footer-link" href="https://play.google.com/store/apps/developer?id=Muhammad+Awais" target="_blank">↗ Play Store</a>
+  </div>
+  <div class="footer-copy">Proposal prepared for Eryk · Tiger Morph WebGL Animation Project · 2026</div>
+</footer>
+
+<script>
+// ── PARTICLE CANVAS ──
+const canvas = document.getElementById('particleCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [], mouse = { x: null, y: null };
+
+function resize() {
+  W = canvas.width = canvas.offsetWidth;
+  H = canvas.height = canvas.offsetHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); initParticles(); });
+
+window.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - r.left;
+  mouse.y = e.clientY - r.top;
+});
+window.addEventListener('mouseleave', () => { mouse.x = null; mouse.y = null; });
+
+function randomBetween(a, b) { return a + Math.random() * (b - a); }
+
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = randomBetween(0, W);
+    this.y = randomBetween(0, H);
+    this.baseX = this.x;
+    this.baseY = this.y;
+    this.vx = randomBetween(-0.15, 0.15);
+    this.vy = randomBetween(-0.3, -0.05);
+    this.size = randomBetween(1.2, 3.2);
+    this.baseSize = this.size;
+    this.alpha = randomBetween(0.3, 0.9);
+    this.baseAlpha = this.alpha;
+    this.pulse = randomBetween(0, Math.PI * 2);
+    this.pulseSpeed = randomBetween(0.008, 0.025);
+    this.waveOffset = randomBetween(0, Math.PI * 2);
+    this.waveAmp = randomBetween(0.3, 1.2);
+  }
+  update(t) {
+    this.pulse += this.pulseSpeed;
+    const wave = Math.sin(t * 0.0008 + this.waveOffset) * this.waveAmp;
+    this.x += this.vx + Math.sin(t * 0.0005 + this.waveOffset) * 0.3;
+    this.y += this.vy + wave * 0.05;
+    this.alpha = this.baseAlpha * (0.7 + 0.3 * Math.sin(this.pulse));
+    this.size = this.baseSize * (0.85 + 0.15 * Math.sin(this.pulse * 1.3));
+
+    // Mouse repulsion
+    if (mouse.x !== null) {
+      const dx = this.x - mouse.x;
+      const dy = this.y - mouse.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 100) {
+        const force = (100 - dist) / 100;
+        this.x += (dx / dist) * force * 2.5;
+        this.y += (dy / dist) * force * 2.5;
+      }
+    }
+
+    if (this.y < -20) { this.y = H + 10; this.x = randomBetween(0, W); }
+    if (this.x < -20) this.x = W + 10;
+    if (this.x > W + 20) this.x = -10;
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    // Glow
+    const grd = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 3);
+    grd.addColorStop(0, 'rgba(245,166,35,0.9)');
+    grd.addColorStop(0.4, 'rgba(245,140,10,0.4)');
+    grd.addColorStop(1, 'rgba(245,100,0,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Core
+    ctx.globalAlpha = Math.min(this.alpha * 1.4, 1);
+    ctx.fillStyle = '#FFD580';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function initParticles() {
+  const count = Math.min(Math.floor((W * H) / 5000), 200);
+  particles = Array.from({ length: count }, () => new Particle());
+}
+initParticles();
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t++;
+  ctx.clearRect(0, 0, W, H);
+  // Subtle gradient bg
+  const bg = ctx.createRadialGradient(W * 0.5, H * 0.4, 0, W * 0.5, H * 0.4, W * 0.7);
+  bg.addColorStop(0, 'rgba(18,10,2,0.95)');
+  bg.addColorStop(1, 'rgba(8,8,8,0.98)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  particles.forEach(p => { p.update(t); p.draw(); });
+}
+animate();
+
+// ── SCROLL REVEAL ──
+const reveals = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.12 });
+reveals.forEach(r => observer.observe(r));
+</script>
+</body>
+</html>
